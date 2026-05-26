@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>DANNA</title>
+<style>
+  :root{
+    --rosa: 255, 120, 170;
+    --rosa-claro: 255, 200, 220;
+  }
+  *{ margin:0; padding:0; box-sizing:border-box; }
+  html,body{
+    width:100%; height:100%;
+    overflow:hidden;
+    background:#000;
+    cursor: none;
+  }
+  body{
+    background:
+      radial-gradient(ellipse at 50% 20%, rgba(40, 8, 24, 0.9) 0%, rgba(10, 2, 8, 1) 45%, #000 100%);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    user-select:none;
+  }
+
+  /* Canvas principal (lluvia, corazones, partículas) */
+  #scene{
+    position:fixed;
+    inset:0;
+    display:block;
+    z-index:1;
+  }
+
+  /* Capa de oscurecimiento cinematográfico */
+  #darken{
+    position:fixed;
+    inset:0;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 0%, rgba(0,0,0,0.55) 100%);
+    opacity:0;
+    z-index:2;
+    pointer-events:none;
+    transition: opacity 2.4s cubic-bezier(.22,.61,.36,1);
+  }
+  #darken.on{ opacity:1; }
+
+  /* Viñeta sutil permanente */
+  #vignette{
+    position:fixed;
+    inset:0;
+    z-index:3;
+    pointer-events:none;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,0.6) 100%);
+  }
+
+  /* Contador */
+  #counter{
+    position:fixed;
+    left:50%;
+    bottom:9%;
+    transform:translateX(-50%);
+    z-index:5;
+    font-family: 'Didot','Bodoni MT','Playfair Display', Georgia, serif;
+    font-size: clamp(4rem, 16vw, 11rem);
+    font-weight:300;
+    letter-spacing: 0.04em;
+    color: rgba(255,235,245,0.96);
+    text-shadow:
+      0 0 18px rgba(var(--rosa), 0.85),
+      0 0 45px rgba(var(--rosa), 0.55),
+      0 0 90px rgba(var(--rosa), 0.35);
+    pointer-events:none;
+    opacity:0;
+  }
+  #counter.tick{
+    animation: tickPop 1s cubic-bezier(.22,.61,.36,1);
+  }
+  @keyframes tickPop{
+    0%   { opacity:0; transform:translateX(-50%) scale(1.5); filter:blur(8px); }
+    18%  { opacity:1; transform:translateX(-50%) scale(1);   filter:blur(0); }
+    78%  { opacity:1; transform:translateX(-50%) scale(1); }
+    100% { opacity:0.0; transform:translateX(-50%) scale(0.92); filter:blur(3px); }
+  }
+  #counter.fade{ opacity:0; transition: opacity 1s ease; }
+
+  /* Palabra DANNA */
+  #danna{
+    position:fixed;
+    left:50%;
+    top:50%;
+    transform: translate(-50%,-50%) scale(0.55);
+    z-index:4;
+    font-family: 'Didot','Bodoni MT','Playfair Display', Georgia, serif;
+    font-weight:400;
+    font-size: clamp(3.5rem, 22vw, 18rem);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space:nowrap;
+    background: linear-gradient(180deg, #ffffff 0%, #ffd9e6 45%, #ff8fb6 100%);
+    -webkit-background-clip:text;
+    background-clip:text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    opacity:0;
+    pointer-events:none;
+    filter: blur(14px);
+    will-change: transform, opacity, filter;
+    --glow: 0.55;
+  }
+  #danna::after{
+    content:"DANNA";
+    position:absolute;
+    inset:0;
+    z-index:-1;
+    -webkit-text-fill-color: rgba(var(--rosa), var(--glow));
+    color: rgba(var(--rosa), var(--glow));
+    filter: blur(28px);
+  }
+  #danna.reveal{
+    animation: dannaReveal 2.6s cubic-bezier(.16,.84,.34,1) forwards;
+  }
+  @keyframes dannaReveal{
+    0%   { opacity:0; transform:translate(-50%,-50%) scale(0.55); filter:blur(28px); }
+    55%  { opacity:1; }
+    100% { opacity:1; transform:translate(-50%,-50%) scale(1); filter:blur(0); }
+  }
+  /* respiración / pulso suave permanente una vez revelada */
+  #danna.alive{
+    animation: dannaBreath 5.5s ease-in-out infinite;
+  }
+  @keyframes dannaBreath{
+    0%,100% { transform:translate(-50%,-50%) scale(1);    --glow:0.5; }
+    50%     { transform:translate(-50%,-50%) scale(1.025); --glow:0.8; }
+  }
+  /* reacción al golpe */
+  #danna.react{
+    animation: dannaShake 0.5s cubic-bezier(.36,.07,.19,.97);
+  }
+  @keyframes dannaShake{
+    0%   { transform:translate(-50%,-50%) scale(1); }
+    15%  { transform:translate(calc(-50% - 10px),-50%) scale(1.08); --glow:1; }
+    30%  { transform:translate(calc(-50% + 9px), calc(-50% - 4px)) scale(1.07); }
+    45%  { transform:translate(calc(-50% - 7px), calc(-50% + 4px)) scale(1.06); --glow:1; }
+    60%  { transform:translate(calc(-50% + 5px),-50%) scale(1.04); }
+    80%  { transform:translate(calc(-50% - 3px),-50%) scale(1.02); }
+    100% { transform:translate(-50%,-50%) scale(1); --glow:0.6; }
+  }
+
+  /* Cursor personalizado (punto romántico) */
+  #cursor{
+    position:fixed;
+    top:0; left:0;
+    width:14px; height:14px;
+    margin:-7px 0 0 -7px;
+    border-radius:50%;
+    background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(var(--rosa),0.9) 50%, rgba(var(--rosa),0) 75%);
+    box-shadow: 0 0 18px rgba(var(--rosa),0.9);
+    z-index:9;
+    pointer-events:none;
+    transition: width .15s ease, height .15s ease;
+  }
+
+  @media (hover:none){
+    html,body{ cursor:auto; }
+    #cursor{ display:none; }
+  }
+</style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <div id="darken"></div>
+  <div id="vignette"></div>
+  <div id="counter"></div>
+  <div id="danna">DANNA</div>
+  <div id="cursor"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ----------------------------------------------------------------------
+  // Configuración general / utilidades
+  // ----------------------------------------------------------------------
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  const counterEl = document.getElementById('counter');
+  const dannaEl = document.getElementById('danna');
+  const darkenEl = document.getElementById('darken');
+  const cursorEl = document.getElementById('cursor');
+
+  let W = 0, H = 0, DPR = 1;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[(Math.random() * arr.length) | 0];
+  const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+
+  // Estados de la experiencia
+  const STATE = { RAIN:0, TRANSITION:1, REVEAL:2, INTERACTIVE:3 };
+  let state = STATE.RAIN;
+
+  function resize(){
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width  = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    measureDanna();
+    buildRain(); // reconstruir densidad acorde al área
+  }
+
+  // Tamaño/posición de la palabra DANNA para detección de impactos
+  let dannaBox = { x:0, y:0, w:0, h:0, cx:0, cy:0 };
+  function measureDanna(){
+    const r = dannaEl.getBoundingClientRect();
+    dannaBox = {
+      x: r.left, y: r.top, w: r.width, h: r.height,
+      cx: r.left + r.width/2, cy: r.top + r.height/2
+    };
+  }
+
+  // ----------------------------------------------------------------------
+  // FASE 1 — Lluvia infinita de "te quiero"
+  // ----------------------------------------------------------------------
+  const RAIN_TEXT = 'te quiero';
+  let rain = [];
+  let rainSpawn = true;       // ¿seguimos generando lluvia?
+  let rainSpeedMul = 1;       // multiplicador global (para desacelerar)
+
+  function makeDrop(initial){
+    // depth 0 = lejos (pequeño, tenue, borroso, lento) ... 1 = cerca
+    const depth = Math.random();
+    const size = rand(11, 13) + depth * 26;          // px
+    return {
+      x: rand(-40, W + 40),
+      y: initial ? rand(-H, H) : rand(-120, -20),
+      depth,
+      size,
+      vy: (rand(22, 48) + depth * 70),               // px/s base
+      opacity: 0.10 + depth * 0.85,
+      blur: depth < 0.34 ? rand(1.6, 3.6) : 0,        // los lejanos desenfocados
+      rot: rand(-0.12, 0.12),
+      sway: rand(0, Math.PI * 2),
+      swaySpeed: rand(0.3, 0.9),
+      swayAmp: rand(4, 16) * (1 - depth*0.5)
+    };
+  }
+
+  function buildRain(){
+    const target = Math.round(clamp((W * H) / 11000, 70, 190));
+    rain = [];
+    for (let i = 0; i < target; i++) rain.push(makeDrop(true));
+  }
+
+  function updateRain(dt){
+    const parX = (mouse.x - W/2) * 0.012;   // parallax horizontal
+    const parY = (mouse.y - H/2) * 0.006;
+    for (let i = 0; i < rain.length; i++){
+      const d = rain[i];
+      d.sway += d.swaySpeed * dt;
+      d.y += d.vy * rainSpeedMul * dt;
+      // reciclar
+      if (d.y - d.size > H + 60){
+        if (rainSpawn){
+          Object.assign(d, makeDrop(false));
+        } else {
+          // en transición, dejar caer y desvanecer sin reaparecer arriba
+          d.opacity = Math.max(0, d.opacity - dt * 0.4);
+        }
+      }
+      d._drawX = d.x + Math.sin(d.sway) * d.swayAmp - parX * (0.3 + d.depth);
+      d._drawY = d.y - parY * (0.3 + d.depth);
+    }
+  }
+
+  function drawRain(){
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let curBlur = -1;
+    // dibujar primero los lejanos (borrosos) para profundidad
+    rain.sort((a,b) => a.depth - b.depth);
+    for (let i = 0; i < rain.length; i++){
+      const d = rain[i];
+      if (d.opacity <= 0.01) continue;
+      const wantBlur = d.blur;
+      if (wantBlur !== curBlur){
+        ctx.filter = wantBlur > 0 ? `blur(${wantBlur}px)` : 'none';
+        curBlur = wantBlur;
+      }
+      ctx.save();
+      ctx.translate(d._drawX, d._drawY);
+      ctx.rotate(d.rot);
+      ctx.font = `300 ${d.size}px 'Didot','Bodoni MT',Georgia,serif`;
+      ctx.globalAlpha = d.opacity;
+      ctx.shadowColor = `rgba(255,120,170,${0.5 + d.depth*0.4})`;
+      ctx.shadowBlur = 10 + d.depth * 22;
+      ctx.fillStyle = `rgba(255,${(225 + d.depth*30)|0},${(238)|0},${0.85})`;
+      ctx.fillText(RAIN_TEXT, 0, 0);
+      ctx.restore();
+    }
+    ctx.filter = 'none';
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // ----------------------------------------------------------------------
+  // Partículas ambientales (polvo luminoso de fondo)
+  // ----------------------------------------------------------------------
+  let ambient = [];
+  function buildAmbient(){
+    ambient = [];
+    const n = Math.round(clamp((W*H)/26000, 30, 90));
+    for (let i=0;i<n;i++){
+      ambient.push({
+        x: rand(0,W), y: rand(0,H),
+        r: rand(0.6, 2.2),
+        a: rand(0.05, 0.35),
+        vx: rand(-6,6), vy: rand(-10,4),
+        tw: rand(0, Math.PI*2), tws: rand(0.5,1.6)
+      });
+    }
+  }
+  function updateAmbient(dt){
+    for (const p of ambient){
+      p.x += p.vx*dt; p.y += p.vy*dt; p.tw += p.tws*dt;
+      if (p.y < -10){ p.y = H+10; p.x = rand(0,W); }
+      if (p.x < -10) p.x = W+10; else if (p.x > W+10) p.x = -10;
+    }
+  }
+  function drawAmbient(){
+    for (const p of ambient){
+      const a = p.a * (0.6 + 0.4*Math.sin(p.tw));
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(255,200,220,${a})`;
+      ctx.shadowColor = 'rgba(255,140,180,0.6)';
+      ctx.shadowBlur = 6;
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // ----------------------------------------------------------------------
+  // FASE 4 — Corazones con física + partículas + ondas
+  // ----------------------------------------------------------------------
+  const hearts = [];
+  const sparks = [];     // partículas románticas pequeñas
+  const waves = [];      // ondas expansivas
+  const HEART_COLORS = [
+    [255, 90, 140], [255, 120, 170], [255, 150, 190],
+    [255, 70, 110], [255, 180, 205], [255, 105, 180]
+  ];
+
+  function heartPath(s){
+    ctx.beginPath();
+    for (let t = 0; t <= Math.PI*2 + 0.05; t += 0.18){
+      const x = 16 * Math.pow(Math.sin(t), 3);
+      const y = -(13*Math.cos(t) - 5*Math.cos(2*t) - 2*Math.cos(3*t) - Math.cos(4*t));
+      const px = x * s / 16, py = y * s / 16;
+      if (t === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
+
+  function spawnHeart(x, y, opts = {}){
+    if (hearts.length > 520) return;
+    const col = opts.color || pick(HEART_COLORS);
+    hearts.push({
+      x, y,
+      vx: opts.vx !== undefined ? opts.vx : rand(-40, 40),
+      vy: opts.vy !== undefined ? opts.vy : rand(-90, -20),
+      size: opts.size || rand(10, 26),
+      rot: rand(-Math.PI, Math.PI),
+      vr: rand(-2.4, 2.4),
+      grav: opts.grav !== undefined ? opts.grav : rand(60, 140),
+      life: 0,
+      maxLife: opts.maxLife || rand(1.6, 3.2),
+      color: col,
+      bounced: false,
+      float: opts.float || false,
+      wob: rand(0, Math.PI*2),
+      wobs: rand(1, 2.4),
+      wobA: rand(8, 26)
+    });
+  }
+
+  function spawnSpark(x, y, color){
+    sparks.push({
+      x, y,
+      vx: rand(-1,1), vy: rand(-1,1),
+      sp: rand(60, 260),
+      size: rand(1.5, 4),
+      life: 0, maxLife: rand(0.5, 1.2),
+      color: color || pick(HEART_COLORS)
+    });
+  }
+
+  function explode(x, y, power = 1){
+    const n = Math.round(26 * power);
+    for (let i=0;i<n;i++){
+      const ang = rand(0, Math.PI*2);
+      const sp = rand(80, 320) * power;
+      spawnHeart(x, y, {
+        vx: Math.cos(ang)*sp,
+        vy: Math.sin(ang)*sp - rand(0,60),
+        size: rand(12, 30),
+        grav: rand(120, 240),
+        maxLife: rand(1.4, 2.6)
+      });
+    }
+    for (let i=0;i<46*power;i++){
+      const ang = rand(0, Math.PI*2);
+      const s = sparks.length>900?null:sparks.push({
+        x, y, vx:Math.cos(ang), vy:Math.sin(ang),
+        sp: rand(120, 520)*power, size: rand(1.5,4.5),
+        life:0, maxLife: rand(0.4,1.1), color: pick(HEART_COLORS)
+      });
+    }
+    waves.push({ x, y, r: 8, max: rand(180, 320)*power, a: 0.8 });
+  }
+
+  function updateHearts(dt){
+    for (let i = hearts.length - 1; i >= 0; i--){
+      const h = hearts[i];
+      h.life += dt;
+      if (h.float){
+        // flotación suave alrededor de DANNA
+        h.wob += h.wobs * dt;
+        h.x += Math.sin(h.wob) * h.wobA * dt;
+        h.y += h.vy * dt;
+        h.vy += 4 * dt; // gravedad muy ligera hacia arriba se mantiene flotando
+        h.rot += h.vr * 0.3 * dt;
+      } else {
+        h.vy += h.grav * dt;
+        h.x += h.vx * dt;
+        h.y += h.vy * dt;
+        h.rot += h.vr * dt;
+        // rebote suave en el piso
+        if (h.y > H - 6 && !h.bounced && h.vy > 0){
+          h.vy *= -0.45; h.vx *= 0.7; h.bounced = true;
+        }
+      }
+      if (h.life >= h.maxLife){ hearts.splice(i,1); }
+    }
+
+    for (let i = sparks.length - 1; i >= 0; i--){
+      const s = sparks[i];
+      s.life += dt;
+      s.x += s.vx * s.sp * dt;
+      s.y += s.vy * s.sp * dt;
+      s.sp *= (1 - 1.6*dt);
+      if (s.life >= s.maxLife) sparks.splice(i,1);
+    }
+
+    for (let i = waves.length - 1; i >= 0; i--){
+      const w = waves[i];
+      w.r += (w.max - w.r) * Math.min(1, dt*3.2);
+      w.a -= dt * 1.1;
+      if (w.a <= 0 || w.r >= w.max - 2) waves.splice(i,1);
+    }
+  }
+
+  function drawHearts(){
+    // ondas
+    for (const w of waves){
+      ctx.beginPath();
+      ctx.strokeStyle = `rgba(255,130,175,${clamp(w.a,0,1)})`;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = 'rgba(255,120,170,0.8)';
+      ctx.shadowBlur = 18;
+      ctx.arc(w.x, w.y, w.r, 0, Math.PI*2);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+
+    // sparks
+    for (const s of sparks){
+      const a = clamp(1 - s.life/s.maxLife, 0, 1);
+      ctx.beginPath();
+      ctx.fillStyle = `rgba(${s.color[0]},${s.color[1]},${s.color[2]},${a})`;
+      ctx.shadowColor = `rgba(${s.color[0]},${s.color[1]},${s.color[2]},0.9)`;
+      ctx.shadowBlur = 10;
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+
+    // corazones
+    for (const h of hearts){
+      const t = h.life / h.maxLife;
+      // fade-in rápido, fade-out suave (desintegración)
+      let a;
+      if (t < 0.12) a = t / 0.12;
+      else a = 1 - ((t - 0.12) / 0.88);
+      a = clamp(a, 0, 1);
+      const scaleOut = h.float ? 1 : (1 - t*0.25);
+      ctx.save();
+      ctx.translate(h.x, h.y);
+      ctx.rotate(h.rot);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = `rgba(${h.color[0]},${h.color[1]},${h.color[2]},1)`;
+      ctx.shadowColor = `rgba(${h.color[0]},${h.color[1]},${h.color[2]},0.95)`;
+      ctx.shadowBlur = 16;
+      heartPath(h.size * scaleOut);
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+
+  // ----------------------------------------------------------------------
+  // Entrada (mouse / touch)
+  // ----------------------------------------------------------------------
+  const mouse = { x: W/2, y: H/2, px: W/2, py: H/2, speed: 0, lastMove: 0, has:false };
+  let spawnAccum = 0;
+  let lastExplode = 0;
+
+  function pointerMove(x, y){
+    mouse.px = mouse.x; mouse.py = mouse.y;
+    mouse.x = x; mouse.y = y;
+    mouse.has = true;
+    const now = performance.now();
+    const dx = mouse.x - mouse.px, dy = mouse.y - mouse.py;
+    const dist = Math.hypot(dx, dy);
+    const dtm = Math.max(1, now - mouse.lastMove);
+    mouse.speed = dist / dtm * 16; // ~px por frame
+    mouse.lastMove = now;
+
+    // cursor visual
+    cursorEl.style.transform = `translate(${x}px, ${y}px)`;
+    const grow = clamp(mouse.speed * 0.5, 0, 22);
+    cursorEl.style.width = (14 + grow) + 'px';
+    cursorEl.style.height = (14 + grow) + 'px';
+
+    if (state !== STATE.INTERACTIVE) return;
+
+    // corazones según distancia recorrida
+    spawnAccum += dist;
+    const step = 16;
+    while (spawnAccum > step){
+      spawnAccum -= step;
+      spawnHeart(x + rand(-8,8), y + rand(-8,8), {
+        vx: dx*1.2 + rand(-30,30),
+        vy: dy*1.2 + rand(-60,-10),
+        size: rand(10, 22)
+      });
+    }
+
+    // ¿impacto sobre DANNA con velocidad alta?
+    const overDanna =
+      x > dannaBox.x - 30 && x < dannaBox.x + dannaBox.w + 30 &&
+      y > dannaBox.y - 30 && y < dannaBox.y + dannaBox.h + 30;
+
+    if (mouse.speed > 26 && (overDanna || dist > 60) && now - lastExplode > 260){
+      lastExplode = now;
+      const power = clamp(mouse.speed/28, 0.7, 2.4);
+      explode(x, y, overDanna ? power*1.3 : power);
+      if (overDanna) reactDanna(power);
+    } else if (overDanna && mouse.speed > 12 && now - lastExplode > 600){
+      // roce: pequeño estallido + leve reacción
+      lastExplode = now;
+      explode(dannaBox.cx + rand(-40,40), dannaBox.cy + rand(-20,20), 0.7);
+      reactDanna(0.6);
+    }
+  }
+
+  function reactDanna(power){
+    dannaEl.classList.remove('react');
+    void dannaEl.offsetWidth; // reiniciar animación
+    dannaEl.classList.add('react');
+    // explosión de corazones desde el centro de la palabra
+    explode(dannaBox.cx, dannaBox.cy, clamp(power, 0.8, 2));
+  }
+  dannaEl.addEventListener('animationend', e => {
+    if (e.animationName === 'dannaShake') dannaEl.classList.remove('react');
+  });
+
+  window.addEventListener('mousemove', e => pointerMove(e.clientX, e.clientY), { passive:true });
+  window.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    if (t) pointerMove(t.clientX, t.clientY);
+  }, { passive:true });
+  window.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    if (t){ pointerMove(t.clientX, t.clientY); if (state===STATE.INTERACTIVE) explode(t.clientX,t.clientY,1.2); }
+  }, { passive:true });
+
+  // ----------------------------------------------------------------------
+  // Reposo: corazones suaves flotando alrededor de DANNA
+  // ----------------------------------------------------------------------
+  let idleAccum = 0;
+  function idleHearts(dt){
+    if (state !== STATE.INTERACTIVE) return;
+    const idle = performance.now() - mouse.lastMove > 1100;
+    if (!idle) return;
+    idleAccum += dt;
+    if (idleAccum > 0.22){
+      idleAccum = 0;
+      const ang = rand(0, Math.PI*2);
+      const rx = dannaBox.w * 0.55 + rand(0, 60);
+      const ry = dannaBox.h * 0.9 + rand(0, 50);
+      spawnHeart(
+        dannaBox.cx + Math.cos(ang) * rx,
+        dannaBox.cy + Math.sin(ang) * ry,
+        { float:true, vy: rand(-26,-10), size: rand(12,22), maxLife: rand(2.6,4.2),
+          color: pick([[255,160,195],[255,190,215],[255,140,180]]) }
+      );
+    }
+  }
+
+  // ----------------------------------------------------------------------
+  // Secuencia de fases (contador + transición + revelación)
+  // ----------------------------------------------------------------------
+  function runCountdown(){
+    let n = 10;
+    const show = () => {
+      counterEl.textContent = n;
+      counterEl.classList.remove('tick');
+      void counterEl.offsetWidth;
+      counterEl.classList.add('tick');
+    };
+    show();
+    const iv = setInterval(() => {
+      n--;
+      if (n >= 1){
+        show();
+      } else {
+        clearInterval(iv);
+        counterEl.classList.add('fade');
+        beginTransition();
+      }
+    }, 1000);
+  }
+
+  function beginTransition(){
+    state = STATE.TRANSITION;
+    rainSpawn = false;
+    darkenEl.classList.add('on');
+    // desacelerar la lluvia progresivamente
+    const t0 = performance.now();
+    const slow = () => {
+      const k = (performance.now() - t0) / 1800;
+      rainSpeedMul = Math.max(0.06, 1 - k);
+      if (k < 1) requestAnimationFrame(slow);
+    };
+    slow();
+
+    setTimeout(revealDanna, 1500);
+  }
+
+  function revealDanna(){
+    state = STATE.REVEAL;
+    measureDanna();
+    dannaEl.classList.add('reveal');
+    // estallido de partículas en la aparición
+    setTimeout(() => {
+      measureDanna();
+      explode(dannaBox.cx, dannaBox.cy, 2);
+    }, 900);
+  }
+
+  dannaEl.addEventListener('animationend', e => {
+    if (e.animationName === 'dannaReveal'){
+      dannaEl.classList.add('alive');
+      state = STATE.INTERACTIVE;
+      measureDanna();
+      // aclarar un poco el oscurecido para la fase interactiva
+      darkenEl.style.opacity = '0.55';
+    }
+  });
+
+  // ----------------------------------------------------------------------
+  // Bucle principal
+  // ----------------------------------------------------------------------
+  let last = performance.now();
+  function loop(now){
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.05) dt = 0.05; // estabilidad
+
+    // motion blur ligero: limpiar con un negro semitransparente
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = (state === STATE.INTERACTIVE) ? 'rgba(6,1,5,0.30)' : 'rgba(6,1,5,0.22)';
+    ctx.fillRect(0, 0, W, H);
+
+    updateAmbient(dt);
+    drawAmbient();
+
+    if (state === STATE.RAIN || state === STATE.TRANSITION){
+      updateRain(dt);
+      drawRain();
+    } else if (rain.length){
+      // durante revelación seguir mostrando residuos cayendo lento
+      updateRain(dt);
+      drawRain();
+    }
+
+    // corazones / partículas (fase interactiva y estallidos de revelación)
+    idleHearts(dt);
+    updateHearts(dt);
+    drawHearts();
+
+    requestAnimationFrame(loop);
+  }
+
+  // ----------------------------------------------------------------------
+  // Arranque
+  // ----------------------------------------------------------------------
+  window.addEventListener('resize', resize);
+  mouse.lastMove = performance.now();
+  resize();
+  buildAmbient();
+  requestAnimationFrame(loop);
+  // pequeña espera para asegurar layout antes de iniciar contador
+  setTimeout(() => { counterEl.style.opacity = '1'; runCountdown(); }, 400);
+})();
+</script>
+</body>
+</html>
